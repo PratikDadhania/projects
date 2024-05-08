@@ -1,1 +1,445 @@
+*/ 
+-> Download and pre-preparation of data
 
+pip install mlxtend
+pip install pyvis
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from mlxtend.frequent_patterns import apriori, association_rules
+from mlxtend.preprocessing import TransactionEncoder
+from pyvis.network import Network
+import datetime as dt
+import numpy as np
+
+-> Download the data of customer transactions from a csv file.
+df = pd.read_csv(r"C:\Users\15197\Downloads\bread basket.csv")
+df
+
+-> Let's study the DataSet. As you can see, the DataSet consists of 20507 rows and 5 columns.
+df.info()
+
+-> As you can see, the first column of the DataSet has int64 type. All other are of object type. The DataSet has the 
+   following columns:
+
+1. Transaction: the transaction id which is unique for each order
+2. Item: a list of items to be ordered/placed by customer
+3. date_time: the date and time of the transaction.
+4. period_day: the period of the day when a customer ordered/placed
+5. weekday_weekend: is the day is weekend (sat or sun) or a weekday.
+
+As you can see, first of all we need to change the data type of the date_time column.
+
+df['date_time'] = pd.to_datetime(df['date_time'])
+df.info()
+
+-> We should add some new columns for basic visual market basket analysis.
+-> To analyse purchases dynamics during different time period, we should split date_time columns into time and hours.
+
+# Assuming 'date_time' is your datetime column
+df['time'] = df['date_time'].dt.time
+df['hour'] = df['date_time'].dt.hour
+df
+
+-> To analyse the dynamics of purchases during the year, we should add columns with month numbers and their names.
+df['month'] = df['date_time'].dt.month
+df['month name'] = df['month'].replace([1,2,3,4,5,6,7,8,9,10,11,12],['January','February','March','April','May','June','July','August','September','October','November','December'])
+df
+
+-> Similarly, to analyse weekly purchases, we need to highlight the days of the week and their names.
+df['day'] = df['date_time'].dt.day
+df['weekday'] = df['date_time'].dt.weekday
+df['weekday name'] = df['weekday'].replace([0,1,2,3,4,5,6], ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'])
+df
+
+-> Let's analyse the final DataSet:
+df.info()
+
+#Data Visualizations
+Let's analyze top 20 most popular purchases.
+
+popular = df['Item'].value_counts()
+(df['Item'].value_counts(normalize=True)*100).head(20)
+
+plt.figure(figsize=(15,5))
+sns.barplot(x=popular.head(20).index, y=popular.head(20).values, palette='hls')
+plt.xlabel('Item', size = 15)
+plt.xticks(rotation=45)
+plt.ylabel('Count of Items', size=15)
+plt.title('Top 20 Items purchesed by customer', color = 'red', size = 20)
+plt.show()
+
+-> the most popular (26%) of purchases is Coffee, the next is (16%) Bread, then goes Tea (6.99%).
+
+-> Let's analyze the dynamics of monthly purchases. For correct sorting, we need to group the DataSet by month number 
+   but display on the graph by month name.
+
+monthTran = df.groupby(['month','month name'])['Transaction'].count().reset_index()
+plt.figure(figsize=(12,5))
+sns.barplot(data = monthTran[['month name', 'Transaction']], x = "month name", y = "Transaction")
+plt.xlabel('Months', size = 15)
+plt.ylabel('Orders per month', size = 15)
+plt.title('Number of orders received each month', color = 'red', size = 20)
+plt.show()
+
+-> the largest number of purchases corresponds to March and November. Also, the most active buyers are in winter. In 
+   summer and early autumn, activity is the lowest.
+
+-> Let's analyze monthly purchases for the six most popular products.
+
+monthTranTransaction = df[df.Item.isin(popular.head(6).index)].groupby(['month','month name','Item'])['Transaction'].count().reset_index()
+
+ax = sns.catplot(x="month name", y="Transaction",
+                  col="Item",
+                 data=monthTranTransaction, kind="bar",
+                 height=4,  col_wrap=3)
+ax.set_xticklabels(rotation=45)
+
+-> Let's analyze the weekly activity.
+
+weekTran = df.groupby(['weekday','weekday name'])['Transaction'].count().reset_index()
+
+plt.figure(figsize=(12,5))
+sns.barplot(data = weekTran[['weekday name', 'Transaction']], x = "weekday name", y = "Transaction")
+plt.xlabel('Week Day', size = 15)
+plt.ylabel('Orders per day', size = 15)
+plt.title('Number of orders received each day', color = 'red', size = 20)
+plt.show()
+
+-> from the plot, buyers are active throughout the week. There are no days with no purchases. You can see that the 
+   maximum number of purchases falls upon Saturday.
+
+-> Let's analyze similarly for the six most popular products
+
+weekTran = weekTran = df[df.Item.isin(popular.head(6).index)].groupby(['weekday','weekday name', 'Item'])['Transaction'].count().reset_index()
+
+ax = sns.catplot(x="weekday name", y="Transaction",
+                  col="Item",
+                 data=weekTran, kind="bar",
+                 height=4,  col_wrap=3)
+ax.set_xticklabels(rotation=45)
+
+-> Let's analyze the share of purchases on weekends and weekdays.
+
+size =  size = df['weekday_weekend'].value_counts()
+
+labels = size.index.values
+colors = ["cyan", "lightblue"]
+explode = [0, 0.1]
+
+plt.figure(figsize=(12,5))
+plt.pie(size, labels = labels, colors = colors, explode = explode, shadow = True, autopct = "%.2f%%")
+plt.title('Transaction by week period')
+plt.show()
+
+-> 62% of purchases are made on weekdays and 37% are made at the weekend.
+
+-> let's build pie charts for the four most popular products.
+
+def func(pct, allvals):
+    absolute = int(np.round(pct/100.*np.sum(allvals)))
+    return "{:.1f}%\n{:d}".format(pct, absolute)
+
+size = df[df.Item.isin(popular.head(6).index)]
+size = pd.crosstab(size['weekday_weekend'],
+              size['Item'])
+# size
+labels = size.index.values
+colors = ["cyan", "lightblue"]
+
+
+for e in popular.head(3).index:
+    plt.figure(figsize=(12,5))
+    dt = size[e]
+    explode = [0, 0.1]
+    plt.pie(dt, colors = colors, explode = explode, shadow = True, 
+            autopct=lambda pct: func(pct, dt.values))
+
+    plt.title(e)
+    plt.legend(labels = labels, title="Day of Week",
+          loc="center right", bbox_to_anchor=(1, 0, 0.5, 1))
+    plt.show()
+
+-> It is also interesting to study the activity of consumers during the day.
+
+coutbyhour= coutbyhour=df.groupby('hour')['Transaction'].count().reset_index()
+
+coutbyhour.sort_values('hour',inplace=True)
+
+plt.figure(figsize=(12,5))
+sns.barplot(data=coutbyhour, x='hour', y='Transaction')
+plt.xlabel('Hour', size = 15)
+plt.ylabel('Transaction', size = 15)
+plt.title('Transaction per hour of the day', color = 'red', size = 20)
+plt.show()
+
+-> It is clearly seen that consumers become the most active starting from 9 in the morning to 4 in the evening.
+
+-> Let's analyze the activity of buyers during parts of the day. This information is the initial DataSet. All you need 
+   to do is to add your own sort order to display the graph columns correctly.
+
+coutbyweekday=coutbyweekday=df.groupby('period_day')['Transaction'].count().reset_index()
+
+
+coutbyweekday.loc[:,"dayorder"] = [1, 2, 0, 3]
+coutbyweekday.sort_values("dayorder",inplace=True)
+plt.figure(figsize=(12,5))
+sns.barplot(data=coutbyweekday, x='period_day', y='Transaction')
+plt.xlabel('Hour', size = 15)
+plt.ylabel('Transaction', size = 15)
+plt.title('Transaction per hour of the day', color = 'red', size = 20)
+plt.show()
+
+#Association Rules
+-> Defining the relationship between purchases is necessary to build association rules. To do this, it is necessary to 
+   transform the transaction DataSet into a special table. Columns of this table contain types of purchases and rows 
+   are transactions. Cells of this table should be bool (true/false). There are two most common ways to do this.
+
+#Way 1. Pivot table
+-> This way involves the use of classical pandas methods like pivot_table and group_by.
+
+First of all, we group rows into transactions:
+
+transactions = df.groupby(['Transaction', 'Item'])['Item'].count().reset_index(name ='Count')
+transactions
+
+-> Then transform this DataSet by pivot_table into a necessary market basket structure:
+
+basket = transactions.pivot_table(index='Transaction', columns='Item', values='Count', aggfunc='sum').fillna(0)
+basket
+
+-> Next, we should change non-zero data to True and zero data to False:
+
+def encode_units(x): 
+    if(x==0): 
+        return False
+    if(x>0): 
+        return True
+    
+basket_sets = basket.applymap(encode_units)
+basket_sets
+
+# Way 2. Using mlxtend framework
+-> The classic machine learning library scikit-learn does not contain association rules functions. That's why we will 
+    use the mlxtend (machine learning extensions) framework. It is a Python library of useful ML tools.
+
+-> First of all, we should create a list of transactions each of which is a lists of purchases.
+
+transactions=[]
+for item in df['Transaction'].unique():
+    lst=list(set(df[df['Transaction']==item]['Item']))
+    transactions.append(lst)
+
+transactions[0:10]
+
+-> Then we can easily get a market basket DataSet using **[TransactionEncoder()]
+
+te = TransactionEncoder()
+encodedData = te.fit(transactions).transform(transactions)
+basket_sets_2 = pd.DataFrame(encodedData, columns=te.columns_)
+basket_sets_2
+
+-> Now when the data is structured properly, we can generate frequent item sets for association rule mining that have 
+   an appropriate support (1% in our case) using apriori().
+
+-> Apriori is a popular algorithm for extracting frequent itemsets with applications in association rule learning. 
+   The apriori algorithm has been designed to operate on databases containing transactions, such as purchases by 
+   customers of a store. An itemset is considered as "frequent" if it meets a user-specified support threshold. 
+   For instance, if the support threshold is set to 0.5 (50%), a frequent itemset is defined as a set of items that 
+   occur together in at least 50% of all transactions in the database.
+
+frequentItems= apriori(basket_sets, use_colnames=True, min_support=0.01)
+frequentItems.sort_values("support", ascending=False)
+
+-> bare Coffee is chosen in 48% of cases. Coffee and Bread - in 9%. Bare salad - in 1%. This list is a necessary list 
+   for creating association rules using the function association_rules() that generates a DataFrame of association rules 
+   including the metrics scores.
+
+-> Rule generation is a common task in the mining of frequent patterns. An association rule is an implication expression 
+   of the form X→Y, where X and Y are disjoint itemsets. A more concrete example based on consumer behaviour would be 
+   {Coffee}→{Bread} suggesting that people who buy Coffee are also likely to buy Bread. To evaluate the "interest" of such 
+   an association rule, different metrics have been developed. The current implementation makes use of the confidence and 
+   lift metrics.
+
+##Metrics
+
+The currently supported metrics for evaluating association rules and setting selection thresholds are listed below. 
+Given a rule "A → C", A stands for antecedent and C stands for consequent.
+
+The currently supported metrics for evaluating association rules and setting selection thresholds are listed below. 
+Given a rule "A → C", A stands for antecedent and C stands for consequent.
+
+##Support
+
+The support metric is defined for itemsets, not association rules. The table produced by the association rule mining 
+algorithm contains three different support metrics: 'antecedent support', 'consequent support', and 'support'. Here, 
+'antecedent support' computes the proportion of transactions that contain the antecedent A, and 'consequent support 
+'computes the support for the itemset of the consequent C. The 'support' metric then computes the support of the 
+combined itemset A∪C - note that 'support' depends on 'antecedent support' and 'consequent support' via 
+min('antecedent support', 'consequent support').
+
+Typically, support is used to measure the abundance or frequency (often interpreted as significance or importance) 
+of an itemset in a database. We refer to an itemset as a "frequent itemset" if its support is larger than a specified 
+minimum-support threshold. Note that in general, due to the downward closure property, all subsets of a frequent itemset 
+are also frequent.
+
+##Confidence
+
+The confidence of a rule A->C is the probability of seeing the consequent in a transaction given that it also contains 
+the antecedent. Note that the metric is not symmetric or directed; for instance, the confidence for A->C is different 
+than the confidence for C->A. The confidence is 1 (maximal) for a rule A->C if the consequent and antecedent always 
+occur together.
+
+##Lift
+
+The lift metric is commonly used to measure how much more often the antecedent and consequent of a rule A->C occur 
+together than we would expect if they were statistically independent. If A and C are independent, the Lift score will 
+be exactly 1.
+
+##Leverage
+
+Leverage computes the difference between the observed frequency of A and C appearing together and the frequency that 
+would be expected if A and C were independent. A leverage value of 0 indicates independence.
+
+##Conviction
+
+A high conviction value means that the consequent is highly depending on the antecedent. For instance, in the case of
+a perfect confidence score, the denominator becomes 0 (due to 1 - 1) for which the conviction score is defined as 
+'inf'. Similar to lift, if items are independent, the conviction is 1.
+
+rules = association_rules(frequentItems, metric="confidence", min_threshold=0.2)
+rules.sort_values('confidence', ascending = False, inplace=True)
+rules
+
+-> This data set contains all possible causal relationships.
+
+-> Let's see all rules that have lift>1:
+
+rules[rules["lift"]>1].sort_values("support",ascending = False)
+
+-> Imagine a situation where a customer buys a Cake. Let's predict what else they can buy:
+
+rules[rules['antecedents'] == frozenset({'Cake'})]
+
+-> As you can see, there are three possible options:
+
+Coffee - 47% Tea - 14% Bread - 3%
+
+-> This can be a recommendation of which product should be placed closer to or farther from the cake on the shelves. Depending on the strategy of the supermarket.
+
+Let's analyse which products are bought together the most frequently.
+
+frequentItems["antecedent_len"] = frequentItems["itemsets"].apply(lambda x: len(x))
+frequentItems[frequentItems["antecedent_len"]>1].sort_values(by=["antecedent_len","support"], ascending=False)
+
+-> The confidence for a very frequent consequent is always high even if there is a very weak association. So, this 
+   doesn't give us a clearer picture. Here, coffee is by far the most frequent item and the best seller. It can 
+   therefore be recommended anyway with every other item. So, we can drop the rules recommending coffee to get a clearer 
+   picture of the real unknown rules generated from the data.
+
+index_names = index_names = rules['consequents'] == frozenset({'Coffee'})
+
+refinedRules = rules[~index_names].sort_values('lift', ascending=False)
+refinedRules.drop(['leverage','conviction'], axis=1, inplace=True)
+refinedRules = refinedRules.reset_index()
+refinedRules
+
+Now the relationship between other types of goods is visible more clearly, such as Cake -> Tea or (Tea and Coffee) -> Cake
+
+##Visualization of Association Rules
+
+-> An important issue of analysis and understanding of associative rules is the possibility of their visualization. 
+   There are several approaches to this. However, the most clear and obvious is the use of the library pyvis. This is 
+   a special framework for Interactive network visualizations.
+
+-> First of all, we should create a pyvis Network(). The Network class is the focus of this library. All pyvis functionality 
+   should be implemented off of a Network instance.
+
+Basket_Network = Network(height="1000px", width="1000px", directed=True, notebook=True, cdn_resources='in_line')
+
+-> Then we should choose the type of pyvis network. There are several types such as: force_atlas_2based(), 
+   barnes_hut(), hrepulsion(), repulsion(), etc.
+
+# Basket_Network.force_atlas_2based()
+# Basket_Network.barnes_hut()
+# Basket_Network.hrepulsion()
+Basket_Network.repulsion()
+
+-> Then we should create nodes (add_node()) and eges (add_edge()) between them for a pyvis graph based on rules:
+
+Basket_Network_Data_zip=zip(rules["antecedents"],
+                            rules["consequents"],
+                            rules["antecedent support"],
+                            rules["consequent support"],
+                            rules["confidence"])
+
+for i in Basket_Network_Data_zip:
+    FromItem=str(i[0]).replace("frozenset({'","").replace("'})","").replace("',　'",",")
+    ToItem=str(i[1]).replace("frozenset({'","").replace("'})","").replace("',　'",",")
+    FromWeight=i[2]
+    ToWeight=i[3]
+    EdgeWeight=i[4]
+
+    Basket_Network.add_node(n_id=FromItem, shape="dot", value=FromWeight,
+                            title=FromItem + "<br>Support: " + str(FromWeight))
+    Basket_Network.add_node(n_id=ToItem, shape="dot", value=ToWeight,
+                           title=ToItem + "<br>Support: " + str(ToWeight))
+    Basket_Network.add_edge(source=FromItem, to=ToItem, value=EdgeWeight, arrowStrikethrough=False,
+                            title=FromItem + " --> " + ToItem + "<br>Confidence:" + str(EdgeWeight))
+
+-> Then we should set the edges smooth (set_edge_smooth) and set the parameters of visualizations like 
+   toggle_hide_edges_on_drag.
+
+Basket_Network.set_edge_smooth(smooth_type="continuous")
+Basket_Network.toggle_hide_edges_on_drag(True)
+
+-> The last step - we save the graph into a file and visualize it using save_graph() and show().
+
+# Save the HTML content to a file manually with UTF-8 encoding
+with open("Basket_Network1.html", "w", encoding="utf-8") as f:
+    f.write(Basket_Network.html)
+
+# Show the saved HTML file using a web browser
+import webbrowser
+webbrowser.open("Basket_Network1.html")
+
+-> the graph allows you to easily understand all races together. The width of lines show you the confidence of rule, the size of node indicate support.
+
+Let's do the same for refinedRules:
+
+Basket_Network2 = Network(height="1000px", width="1000px", directed=True, notebook=True)
+Basket_Network2.repulsion()
+Basket_Network_Data2_zip=zip(refinedRules["antecedents"],
+                            refinedRules["consequents"],
+                            refinedRules["antecedent support"],
+                            refinedRules["consequent support"],
+                            refinedRules["confidence"])
+
+
+for i in Basket_Network_Data2_zip:
+    FromItem=str(i[0]).replace("frozenset({'","").replace("'})","").replace("',　'",",")
+    ToItem=str(i[1]).replace("frozenset({'","").replace("'})","").replace("',　'",",")
+    FromWeight=i[2]
+    ToWeight=i[3]
+    EdgeWeight=i[4]
+
+    Basket_Network2.add_node(n_id=FromItem, shape="dot", value=FromWeight,
+                            title=FromItem + "<br>Support: " + str(FromWeight))
+    Basket_Network2.add_node(n_id=ToItem, shape="dot", value=ToWeight,
+                           title=ToItem + "<br>Support: " + str(ToWeight))
+    Basket_Network2.add_edge(source=FromItem, to=ToItem, value=EdgeWeight, arrowStrikethrough=False,
+                            title=FromItem + " --> " + ToItem + "<br>Confidence:" + str(EdgeWeight))
+
+Basket_Network2.set_edge_smooth(smooth_type="continuous")
+Basket_Network2.toggle_hide_edges_on_drag(True)
+Basket_Network2.save_graph("Basket_Network2.html")
+Basket_Network2.show("Basket_Network2.html")
+
+##Conclusions
+we learned how to perform a market basket analysis based on the Bread Basket dataset from a bakery in Edinburgh, using
+both classical data visualization techniques and the Apriori algorithm, standard indicators, association rules, aggregation 
+and trimming rules. We have learned to visualize association rules in the form of a dynamic graph.
+
+Based on real data, we comprehensively analyzed the dynamics of purchases and most popular purchases with their support. 
+We created and analyzed association rules. Based on them, we found the most popular products bought together. We learned 
+to predict which products will be bought and to create recommendations for the location of products on supermarket shelves.
